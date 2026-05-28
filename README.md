@@ -70,7 +70,7 @@ Branch: **`gh-pages` / `/ (root)`**）。`.github/workflows/` の 2 つのワー
 - `main` にマージ（push）すると **Deploy production** が走り、サイトを `gh-pages` の root へ公開。
 - 公開 URL: `https://bokunoibasho.github.io/ame-nowcast/`
 
-### feature ブランチのプレビュー（手押し）
+### feature ブランチのプレビュー（手動実行）
 本番を壊さずに、作業中のブランチを実機 HTTPS で確認するための仕組み。
 
 1. GitHub の **Actions** タブ → **Deploy preview** を選択

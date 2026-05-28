@@ -1,6 +1,6 @@
 name: Deploy preview
 
-# 手押し（Actions タブ → Run workflow → ブランチ選択）で、その feature ブランチを
+# 手動実行（Actions タブ → Run workflow → ブランチ選択）で、その feature ブランチを
 # /preview/<branch>/ の別 URL へ公開する。本番（root）や他のプレビューは保持する。
 on:
   workflow_dispatch:
