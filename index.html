@@ -82,6 +82,9 @@
     border-radius:50%;margin:0 auto 12px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .leaflet-control-attribution{font-size:9px !important}
+
+  /* 現在地マーカー（青い点）を地図上で目立たせる */
+  .me-dot{filter:drop-shadow(0 0 4px rgba(76,194,255,.9))}
 </style>
 </head>
 <body>
@@ -213,14 +216,39 @@
   });
 
   // ---- 現在地 ----
-  function locate(){
+  var meMarker = null;
+
+  function showMe(lat, lng){ // 「ここが現在地」を示す青い点
+    if(!meMarker){
+      meMarker = L.circleMarker([lat, lng], {
+        radius:7, weight:3, color:'#fff', fillColor:'#4cc2ff',
+        fillOpacity:1, className:'me-dot'
+      }).addTo(map);
+    } else {
+      meMarker.setLatLng([lat, lng]);
+    }
+  }
+
+  function locate(initial){
     if(!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(function(p){
-      map.setView([p.coords.latitude, p.coords.longitude], 12);
-    }, function(){ /* 拒否・失敗時は初期位置のまま */ }, { enableHighAccuracy:true, timeout:8000 });
+      var lat = p.coords.latitude, lng = p.coords.longitude;
+      showMe(lat, lng);
+      // PWA単独モード（viewport-fit=cover / safe-area）では初期描画後に
+      // コンテナサイズが確定するため、中心を確定させる前にサイズを通知する
+      map.invalidateSize();
+      // 起動時の中心化はタイル読み込みでアニメが中断されると中心がずれて見えるため
+      // アニメ無しで確実に中央へ。手動（◎ボタン）はスムーズに寄せる
+      map.setView([lat, lng], 12, { animate: !initial });
+    }, function(){ /* 拒否・失敗時は初期位置のまま */ },
+       { enableHighAccuracy:true, timeout:8000, maximumAge:60000 });
   }
-  document.getElementById('locBtn').addEventListener('click', locate);
-  locate(); // 起動時に一度だけ現在地へ寄せる
+  document.getElementById('locBtn').addEventListener('click', function(){ locate(false); });
+  locate(true); // 起動時に一度だけ現在地へ寄せる
+
+  // PWA単独モードでは回転・safe-area変化でコンテナ寸法が変わるため、
+  // その都度サイズを通知してタイルの欠けを防ぐ（中心はユーザ操作を尊重して動かさない）
+  window.addEventListener('resize', function(){ map.invalidateSize(); });
 })();
 </script>
 <script>
