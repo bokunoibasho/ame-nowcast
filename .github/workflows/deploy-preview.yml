@@ -1,0 +1,41 @@
+name: Deploy preview
+
+# 手動実行（Actions タブ → Run workflow → ブランチ選択）で、その feature ブランチを
+# /preview/<branch>/ の別 URL へ公開する。本番（root）や他のプレビューは保持する。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # peaceiris が gh-pages ブランチへ push するため
+
+concurrency:
+  group: pages-preview-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sanitize branch name to slug
+        id: slug
+        # ブランチ名の "/" を "-" にし、URL/パスに安全な文字だけ残す（例: feat/foo -> feat-foo）
+        run: |
+          slug=$(printf '%s' "${{ github.ref_name }}" | tr '/' '-' | tr -cd 'A-Za-z0-9._-')
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to gh-pages /preview/<slug>/
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          publish_branch: gh-pages
+          destination_dir: preview/${{ steps.slug.outputs.slug }}
+          keep_files: true            # 本番 root・他プレビューを消さない
+          exclude_assets: '.github'
+          commit_message: "deploy(preview): ${{ github.ref_name }} @ ${{ github.sha }}"
+
+      - name: Summary
+        run: |
+          echo "プレビュー: https://bokunoibasho.github.io/ame-nowcast/preview/${{ steps.slug.outputs.slug }}/" >> "$GITHUB_STEP_SUMMARY"

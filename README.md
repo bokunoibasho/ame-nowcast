@@ -61,12 +61,34 @@ python3 -m http.server 8000
 
 レスポンスは降順なので、利用側で昇順に並べ替えてから使います。
 
-## デプロイ手順（GitHub Pages）
+## デプロイ（GitHub Actions + GitHub Pages）
 
-1. このリポジトリを `bokunoibasho/ame-nowcast` として GitHub に push（`main` ブランチ）
-2. Settings → Pages → Build and deployment で **Source: Deploy from a branch**、**Branch: `main` / `/ (root)`** を選択
-3. 数分後に `https://bokunoibasho.github.io/ame-nowcast/` で公開される
+公開は `gh-pages` ブランチを介して行う（Settings → Pages → Source: **Deploy from a branch**、
+Branch: **`gh-pages` / `/ (root)`**）。`.github/workflows/` の 2 つのワークフローが配信を担う。
+
+### 本番（自動）
+- `main` にマージ（push）すると **Deploy production** が走り、サイトを `gh-pages` の root へ公開。
+- 公開 URL: `https://bokunoibasho.github.io/ame-nowcast/`
+
+### feature ブランチのプレビュー（手動実行）
+本番を壊さずに、作業中のブランチを実機 HTTPS で確認するための仕組み。
+
+1. GitHub の **Actions** タブ → **Deploy preview** を選択
+2. **Run workflow** → 確認したいブランチを選んで実行
+3. 実行ログの Summary に出る URL を開く:
+   `https://bokunoibasho.github.io/ame-nowcast/preview/<branch>/`
+   （ブランチ名の `/` は `-` に変換。例: `feat/foo` → `preview/feat-foo/`）
 4. iPhone Safari で開いて、位置情報許可 → ホーム画面追加で実機確認
+
+本番（root）と各プレビュー（`preview/*`）は同じ `gh-pages` ブランチ上に**並存**する
+（`keep_files: true`）。
+
+> 注意:
+> - `workflow_dispatch` のワークフローは **`main` に存在して初めて** Actions の一覧に出る。
+>   新しい feature ブランチをプレビューしたい場合は、ワークフロー導入後の `main` から
+>   切る（または rebase で取り込む）こと。
+> - `keep_files: true` のため、削除したファイルは `gh-pages` 上に残る。古いプレビューの
+>   掃除は今のところ手動（`gh-pages` の `preview/<slug>/` を削除）。
 
 ## 設計上の判断メモ
 
