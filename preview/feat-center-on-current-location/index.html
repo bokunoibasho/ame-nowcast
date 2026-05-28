@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>雨雲ナウキャスト</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
+<!-- iOSでホーム画面に追加したときフルスクリーンの単独アプリのように開くための指定 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="雨雲">
+<meta name="theme-color" content="#0d1b2a">
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --bg:#0d1b2a;
+    --panel:rgba(13,27,42,.82);
+    --ink:#eaf2ff;
+    --muted:#9bb0c9;
+    --accent:#4cc2ff;
+    --now:#ffd166;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);
+    font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif;
+    color:var(--ink);overflow:hidden}
+  #map{position:absolute;inset:0}
+
+  /* 上部のステータスバー */
+  .topbar{
+    position:absolute;left:0;right:0;top:0;z-index:1000;
+    padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;
+    background:linear-gradient(180deg,var(--panel),rgba(13,27,42,0));
+    pointer-events:none;
+    display:flex;align-items:baseline;gap:10px;
+  }
+  .time{font-size:30px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums;
+    text-shadow:0 1px 8px rgba(0,0,0,.6)}
+  .tag{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;
+    transform:translateY(-3px)}
+  .tag.now{background:var(--now);color:#3a2c00}
+  .tag.fc{background:rgba(76,194,255,.22);color:var(--accent);border:1px solid rgba(76,194,255,.5)}
+  .tag.past{background:rgba(255,255,255,.12);color:var(--muted)}
+
+  /* 下部のコントロール */
+  .controls{
+    position:absolute;left:0;right:0;bottom:0;z-index:1000;
+    padding:14px 16px calc(env(safe-area-inset-bottom) + 16px);
+    background:linear-gradient(0deg,var(--panel),rgba(13,27,42,0));
+    display:flex;align-items:center;gap:14px;
+  }
+  button{
+    flex:0 0 auto;width:52px;height:52px;border-radius:50%;border:none;
+    background:var(--accent);color:#04212f;font-size:22px;cursor:pointer;
+    display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.45);
+    transition:transform .12s ease}
+  button:active{transform:scale(.92)}
+  button.ghost{background:rgba(255,255,255,.14);color:var(--ink)}
+  #slider{flex:1;-webkit-appearance:none;height:6px;border-radius:6px;
+    background:rgba(255,255,255,.22);outline:none}
+  #slider::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;
+    background:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:pointer}
+
+  /* 凡例 */
+  .legend{position:absolute;right:12px;top:96px;z-index:1000;
+    background:var(--panel);border-radius:12px;padding:10px 12px;font-size:11px;
+    color:var(--muted);line-height:1.6;backdrop-filter:blur(6px)}
+  .legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+  /* 読み込み・エラー表示 */
+  .toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1100;
+    background:var(--panel);border:1px solid rgba(255,255,255,.15);border-radius:14px;
+    padding:18px 22px;max-width:80%;text-align:center;font-size:14px;line-height:1.7;
+    backdrop-filter:blur(8px)}
+  .toast.hidden{display:none}
+  .spinner{width:26px;height:26px;border:3px solid rgba(255,255,255,.25);border-top-color:var(--accent);
+    border-radius:50%;margin:0 auto 12px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .leaflet-control-attribution{font-size:9px !important}
+
+  /* 現在地マーカー（青い点）を地図上で目立たせる */
+  .me-dot{filter:drop-shadow(0 0 4px rgba(76,194,255,.9))}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="topbar">
+  <span class="time" id="timeLabel">--:--</span>
+  <span class="tag now" id="kindTag">読込中</span>
+</div>
+
+<div class="legend">
+  <i style="background:#f5f5ff"></i>1mm/h<br>
+  <i style="background:#3399ff"></i>5mm/h<br>
+  <i style="background:#ffd800"></i>20mm/h<br>
+  <i style="background:#ff5050"></i>30mm/h<br>
+  <i style="background:#b400b4"></i>50mm/h〜
+</div>
+
+<div class="controls">
+  <button class="ghost" id="locBtn" title="現在地へ">◎</button>
+  <button id="playBtn" title="再生/停止">▶</button>
+  <input type="range" id="slider" min="0" max="0" value="0">
+</div>
+
+<div class="toast" id="toast"><div class="spinner"></div>雨雲データを取得中…</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---- 地図の用意（背景＝地理院タイル「淡色地図」。気象庁公式と同じ背景）----
+  var map = L.map('map', { zoomControl:false, attributionControl:true })
+             .setView([35.681, 139.767], 9); // 初期は東京駅あたり（現在地が取れたら移動）
+  L.control.zoom({ position:'topleft' }).addTo(map);
+
+  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: "地理院タイル"
+  }).addTo(map);
+
+  // ---- 気象庁 高解像度降水ナウキャスト（hrpns）タイル ----
+  var TIMES = {
+    n1: 'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json', // 実況（過去〜現在）
+    n2: 'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N2.json'  // 予測（〜1時間先）
+  };
+  function tileUrl(basetime, validtime){
+    return 'https://www.jma.go.jp/bosai/jmatile/data/nowc/'
+      + basetime + '/none/' + validtime + '/surf/hrpns/{z}/{x}/{y}.png';
+  }
+
+  var frames = [];      // {basetime, validtime, kind:'past'|'now'|'fc'}
+  var layers = {};      // index -> L.tileLayer（必要になったら生成してキャッシュ）
+  var current = -1;
+  var nowIndex = 0;
+
+  function fmt(v){ // "20240601083000" -> "08:30"
+    return v.substr(8,2) + ':' + v.substr(10,2);
+  }
+
+  function showFrame(i){
+    if(i<0 || i>=frames.length) return;
+    var f = frames[i];
+    if(!layers[i]){
+      layers[i] = L.tileLayer(tileUrl(f.basetime, f.validtime), {
+        opacity: 0.78, maxNativeZoom: 10, maxZoom: 18, tileSize: 256
+      });
+    }
+    layers[i].addTo(map);
+    if(current!==-1 && current!==i && layers[current]) map.removeLayer(layers[current]);
+    current = i;
+
+    document.getElementById('timeLabel').textContent = fmt(f.validtime);
+    var tag = document.getElementById('kindTag');
+    if(f.kind==='now'){ tag.textContent='実況'; tag.className='tag now'; }
+    else if(f.kind==='fc'){ tag.textContent='予測'; tag.className='tag fc'; }
+    else { tag.textContent='過去'; tag.className='tag past'; }
+    document.getElementById('slider').value = i;
+  }
+
+  // ---- 時刻一覧を取得してコマを組み立てる ----
+  Promise.all([ fetch(TIMES.n1), fetch(TIMES.n2) ])
+    .then(function(r){ return Promise.all([r[0].json(), r[1].json()]); })
+    .then(function(res){
+      var n1 = res[0], n2 = res[1];
+      // JMAのJSONは降順なので昇順に並べ替える
+      n1.sort(function(a,b){ return a.validtime < b.validtime ? -1 : 1; });
+      n2.sort(function(a,b){ return a.validtime < b.validtime ? -1 : 1; });
+
+      var seen = {};
+      n1.forEach(function(d,idx){
+        if(seen[d.validtime]) return; seen[d.validtime]=1;
+        frames.push({ basetime:d.basetime, validtime:d.validtime,
+          kind: idx===n1.length-1 ? 'now' : 'past' });
+      });
+      nowIndex = frames.length - 1;
+      n2.forEach(function(d){
+        if(seen[d.validtime]) return; seen[d.validtime]=1;
+        frames.push({ basetime:d.basetime, validtime:d.validtime, kind:'fc' });
+      });
+
+      document.getElementById('slider').max = frames.length - 1;
+      document.getElementById('toast').classList.add('hidden');
+      showFrame(nowIndex); // まず「今」を表示
+    })
+    .catch(function(e){
+      document.getElementById('toast').innerHTML =
+        '雨雲データを取得できませんでした。<br>' +
+        '<small style="color:var(--muted)">（このプレビュー環境では気象庁への通信が制限されることがあります。' +
+        '自分のHTTPSサイトに置くと動きます）</small>';
+    });
+
+  // ---- 操作 ----
+  document.getElementById('slider').addEventListener('input', function(e){
+    stop(); showFrame(parseInt(e.target.value,10));
+  });
+
+  var timer = null;
+  function stop(){ if(timer){ clearInterval(timer); timer=null;
+    document.getElementById('playBtn').textContent='▶'; } }
+  document.getElementById('playBtn').addEventListener('click', function(){
+    if(timer){ stop(); return; }
+    if(frames.length===0) return;
+    this.textContent='❚❚';
+    timer = setInterval(function(){
+      var next = current + 1;
+      if(next >= frames.length) next = 0;
+      showFrame(next);
+    }, 550);
+  });
+
+  // ---- 現在地 ----
+  var meMarker = null;
+
+  function showMe(lat, lng){ // 「ここが現在地」を示す青い点
+    if(!meMarker){
+      meMarker = L.circleMarker([lat, lng], {
+        radius:7, weight:3, color:'#fff', fillColor:'#4cc2ff',
+        fillOpacity:1, className:'me-dot'
+      }).addTo(map);
+    } else {
+      meMarker.setLatLng([lat, lng]);
+    }
+  }
+
+  function locate(initial){
+    if(!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(function(p){
+      var lat = p.coords.latitude, lng = p.coords.longitude;
+      showMe(lat, lng);
+      // PWA単独モード（viewport-fit=cover / safe-area）では初期描画後に
+      // コンテナサイズが確定するため、中心を確定させる前にサイズを通知する
+      map.invalidateSize();
+      // 起動時の中心化はタイル読み込みでアニメが中断されると中心がずれて見えるため
+      // アニメ無しで確実に中央へ。手動（◎ボタン）はスムーズに寄せる
+      map.setView([lat, lng], 12, { animate: !initial });
+    }, function(){ /* 拒否・失敗時は初期位置のまま */ },
+       { enableHighAccuracy:true, timeout:8000, maximumAge:60000 });
+  }
+  document.getElementById('locBtn').addEventListener('click', function(){ locate(false); });
+  locate(true); // 起動時に一度だけ現在地へ寄せる
+
+  // PWA単独モードでは回転・safe-area変化でコンテナ寸法が変わるため、
+  // その都度サイズを通知してタイルの欠けを防ぐ（中心はユーザ操作を尊重して動かさない）
+  window.addEventListener('resize', function(){ map.invalidateSize(); });
+})();
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){ /* オフライン対応はベストエフォート */ });
+    });
+  }
+</script>
+</body>
+</html>

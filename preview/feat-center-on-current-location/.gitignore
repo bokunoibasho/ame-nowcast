@@ -1,0 +1,12 @@
+# 引き継ぎメモ（リポジトリには含めない。必要な記述は README.md へ移済み）
+HANDOFF.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# logs
+*.log
